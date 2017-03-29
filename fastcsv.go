@@ -1,14 +1,15 @@
 package fastcsv
 
 import (
-	"bufio"
 	"bytes"
 	"os"
+	"syscall"
 )
 
 type FileReader struct {
 	file      *os.File
-	scanner   *bufio.Scanner
+	data      []byte
+	current   []byte
 	separator []byte
 }
 
@@ -18,25 +19,40 @@ func NewFileReader(filename string, separator []byte) (*FileReader, error) {
 		return nil, err
 	}
 
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := syscall.Mmap(int(f.Fd()), 0, int(fi.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+	if err != nil {
+		return nil, err
+	}
+
 	return &FileReader{
 		file:      f,
-		scanner:   bufio.NewScanner(f),
+		data:      data,
+		current:   data,
 		separator: separator,
 	}, nil
 }
 
-func (r *FileReader) Close() error {
-	return r.file.Close()
-}
-
-func (r *FileReader) Scan() bool {
-	return r.scanner.Scan()
-}
-
 func (r *FileReader) Record() [][]byte {
-	return bytes.Split(r.scanner.Bytes(), r.separator)
+	eol := bytes.IndexByte(r.current, '\n')
+	if eol == -1 {
+		return nil
+	} else {
+		row := r.current[:eol]
+		r.current = r.current[eol+1:]
+		return bytes.Split(row, r.separator)
+	}
 }
 
-func (r *FileReader) Err() error {
-	return r.scanner.Err()
+func (r *FileReader) Close() error {
+	var err error
+
+	err = syscall.Munmap(r.data)
+	err = r.file.Close()
+
+	return err
 }

@@ -3,7 +3,6 @@ package fastcsv
 import (
 	"encoding/csv"
 	"io"
-	"log"
 	"math/rand"
 	"os"
 	"testing"
@@ -38,11 +37,9 @@ func createTestFile(filename string) {
 	}
 	defer f.Close()
 
-	log.Println("Creating test file...")
-
 	w := csv.NewWriter(f)
 
-	for i := 0; i < 10000000; i++ {
+	for i := 0; i < 1000000; i++ {
 		record := make([]string, 5)
 		for i := range record {
 			j := rand.Intn(len(names))
@@ -55,8 +52,6 @@ func createTestFile(filename string) {
 	if err := w.Error(); err != nil {
 		panic(err)
 	}
-
-	log.Println("Done creating test file")
 }
 
 func BenchmarkRead(b *testing.B) {
@@ -65,19 +60,15 @@ func BenchmarkRead(b *testing.B) {
 	if err != nil {
 		panic(err)
 	}
-	defer r.Close()
+	defer func() {
+		if err := r.Close(); err != nil {
+			panic(err)
+		}
+	}()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		if r.Scan() {
-			r.Record()
-		} else {
-			panic("Ran out of records")
-		}
-	}
-
-	if err := r.Err(); err != nil {
-		panic(err)
+		r.Record()
 	}
 }
 
@@ -116,9 +107,13 @@ func TestComparison(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		defer r.Close()
+		defer func() {
+			if err := r.Close(); err != nil {
+				panic(err)
+			}
+		}()
 
-		for r.Scan() {
+		for {
 			actual <- r.Record()
 			<-actualNext
 		}
@@ -146,6 +141,7 @@ func TestComparison(t *testing.T) {
 		}
 	}()
 
+	nrecord := 0
 	for {
 		a := <-actual
 		e := <-expected
@@ -155,16 +151,17 @@ func TestComparison(t *testing.T) {
 		}
 
 		if len(a) != len(e) {
-			t.Errorf("len(a) = %d, len(e) = %d", len(a), len(e))
+			t.Fatalf("record %d: len(a) = %d, len(e) = %d", nrecord, len(a), len(e))
 		}
 
 		for i := 0; i < len(a); i++ {
 			if string(a[i]) != e[i] {
-				t.Errorf("a[%d] = %q, e[%d] = %q", a[i], e[i])
+				t.Fatalf("record %d: a[%d] = %q, e[%d] = %q", nrecord, a[i], e[i])
 			}
 		}
 
 		actualNext <- true
 		expectedNext <- true
+		nrecord++
 	}
 }
