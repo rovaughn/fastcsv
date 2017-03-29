@@ -28,6 +28,14 @@ var names = []string{
 	"Millard Melville",
 }
 
+type Record struct {
+	First  []byte `csv:"first"`
+	Second []byte `csv:"second"`
+	Third  []byte `csv:"third"`
+	Fourth []byte `csv:"fourth"`
+	Fifth  []byte `csv:"fifth"`
+}
+
 func createTestFile(filename string) {
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0655)
 	if os.IsExist(err) {
@@ -38,6 +46,8 @@ func createTestFile(filename string) {
 	defer f.Close()
 
 	w := csv.NewWriter(f)
+
+	w.Write([]string{"first", "second", "third", "fourth", "fifth"})
 
 	for i := 0; i < 1000000; i++ {
 		record := make([]string, 5)
@@ -55,8 +65,10 @@ func createTestFile(filename string) {
 }
 
 func BenchmarkRead(b *testing.B) {
+	var record Record
+
 	createTestFile("test.csv")
-	r, err := NewFileReader("test.csv", []byte(","))
+	r, err := NewFileReader("test.csv", ',', &record)
 	if err != nil {
 		panic(err)
 	}
@@ -68,7 +80,7 @@ func BenchmarkRead(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		r.Record()
+		r.Scan()
 	}
 }
 
@@ -103,7 +115,8 @@ func TestComparison(t *testing.T) {
 
 	go func() {
 		defer close(actual)
-		r, err := NewFileReader("test.csv", []byte(","))
+		var record Record
+		r, err := NewFileReader("test.csv", ',', &record)
 		if err != nil {
 			panic(err)
 		}
@@ -113,8 +126,8 @@ func TestComparison(t *testing.T) {
 			}
 		}()
 
-		for {
-			actual <- r.Record()
+		for r.Scan() {
+			actual <- [][]byte{record.First, record.Second, record.Third, record.Fourth, record.Fifth}
 			<-actualNext
 		}
 	}()
@@ -127,6 +140,7 @@ func TestComparison(t *testing.T) {
 		defer f.Close()
 
 		r := csv.NewReader(f)
+		r.Read()
 
 		for {
 			record, err := r.Read()
@@ -156,7 +170,7 @@ func TestComparison(t *testing.T) {
 
 		for i := 0; i < len(a); i++ {
 			if string(a[i]) != e[i] {
-				t.Fatalf("record %d: a[%d] = %q, e[%d] = %q", nrecord, a[i], e[i])
+				t.Fatalf("record %d: a[%d] = %q, e[%d] = %q", nrecord, i, a[i], i, e[i])
 			}
 		}
 
