@@ -2,6 +2,7 @@ package fastcsv
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"reflect"
 	"syscall"
@@ -38,6 +39,7 @@ func NewFileReader(filename string, separator byte, dest interface{}) (*FileRead
 		separator: separator,
 	}
 
+	unsetFields := make(map[string]bool)
 	destFields := make(map[string]reflect.Value)
 	destValue := reflect.Indirect(reflect.ValueOf(dest))
 	for i := 0; i < destValue.NumField(); i++ {
@@ -47,6 +49,7 @@ func NewFileReader(filename string, separator byte, dest interface{}) (*FileRead
 			destFields[name] = destValue.Field(i)
 		} else {
 			destFields[field.Name] = destValue.Field(i)
+			unsetFields[field.Name] = true
 		}
 	}
 
@@ -60,6 +63,11 @@ func NewFileReader(filename string, separator byte, dest interface{}) (*FileRead
 		}
 
 		r.dest[index] = field
+		delete(unsetFields, string(name))
+	}
+
+	if len(unsetFields) > 0 {
+		return nil, fmt.Errorf("Not all fields present in csv")
 	}
 
 	return r, nil
@@ -77,24 +85,34 @@ func (r *FileReader) byteRecord() [][]byte {
 }
 
 func (r *FileReader) Scan() bool {
-	eol := bytes.IndexByte(r.current, '\n')
-	if eol == -1 {
+	if len(r.current) == 0 {
 		return false
 	}
 
 	nfield := 0
 	start := 0
-	for i := 0; i <= eol && nfield < len(r.dest); i++ {
-		if i == eol || r.current[i] == r.separator {
-			r.dest[nfield].SetBytes(r.current[start:i])
+	i := 0
+	for {
+		if i >= len(r.current) || r.current[i] == '\n' || r.current[i] == r.separator {
+			if r.dest[nfield].CanSet() {
+				r.dest[nfield].SetBytes(r.current[start:i])
+			}
 			start = i + 1
 			nfield++
 		}
+
+		if i >= len(r.current) {
+			r.current = nil
+			break
+		} else if r.current[i] == '\n' {
+			r.current = r.current[i+1:]
+			break
+		}
+
+		i++
 	}
 
-	r.current = r.current[eol+1:]
-
-	return true
+	return nfield >= len(r.dest)
 }
 
 func (r *FileReader) Close() error {

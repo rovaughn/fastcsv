@@ -33,7 +33,6 @@ type Record struct {
 	Second []byte `csv:"second"`
 	Third  []byte `csv:"third"`
 	Fourth []byte `csv:"fourth"`
-	Fifth  []byte `csv:"fifth"`
 }
 
 func createTestFile(filename string) {
@@ -127,7 +126,7 @@ func TestComparison(t *testing.T) {
 		}()
 
 		for r.Scan() {
-			actual <- [][]byte{record.First, record.Second, record.Third, record.Fourth, record.Fifth}
+			actual <- [][]byte{record.First, record.Second, record.Third, record.Fourth}
 			<-actualNext
 		}
 	}()
@@ -150,7 +149,7 @@ func TestComparison(t *testing.T) {
 				panic(err)
 			}
 
-			expected <- record
+			expected <- record[:4]
 			<-expectedNext
 		}
 	}()
